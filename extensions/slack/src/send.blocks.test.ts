@@ -453,6 +453,63 @@ describe("sendMessageSlack blocks", () => {
     }
   });
 
+  it("records the actual controls card before a later native-data fallback receipt", async () => {
+    const client = createSlackSendTestClient();
+    client.chat.postMessage
+      .mockRejectedValueOnce({ data: { error: "invalid_blocks" } })
+      .mockResolvedValueOnce({ ts: "55", channel: "C123" })
+      .mockResolvedValueOnce({ ts: "66", channel: "C123" });
+    const onQuestionControlDelivery = vi.fn();
+    const onDeliveryResult = vi.fn();
+    const blocks = [
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            action_id: "question",
+            text: { type: "plain_text", text: "Approve" },
+            value: "approve",
+          },
+        ],
+      },
+      {
+        type: "data_table",
+        caption: "x".repeat(4_100),
+        rows: [[{ type: "raw_text", text: "Account" }], [{ type: "raw_text", text: "Acme" }]],
+      },
+    ];
+
+    const result = await sendMessageSlack("channel:C123", "", {
+      token: "xoxb-test",
+      cfg: SLACK_TEST_CFG,
+      client,
+      blocks: blocks as never,
+      onDeliveryResult,
+      onQuestionControlDelivery,
+    });
+
+    expect(result.messageId).toBe("66");
+    expect(onDeliveryResult.mock.calls.map((call) => call[0]?.messageId)).toEqual(["55", "66"]);
+    expect(onQuestionControlDelivery).toHaveBeenCalledOnce();
+    expect(onQuestionControlDelivery).toHaveBeenCalledWith({
+      channelId: "C123",
+      messageId: "55",
+      text: postedMessage(client, 1).text,
+      blocks: postedMessage(client, 1).blocks,
+    });
+    expect(
+      (postedMessage(client, 1).blocks as Array<{ type?: string }>).some(
+        (block) => block.type === "actions",
+      ),
+    ).toBe(true);
+    expect(
+      (postedMessage(client, 2).blocks as Array<{ type?: string }>).some(
+        (block) => block.type === "actions",
+      ),
+    ).toBe(false);
+  });
+
   it("retries rejected native charts as accessible text", async () => {
     const client = createSlackSendTestClient();
     client.chat.postMessage.mockRejectedValueOnce(

@@ -138,6 +138,13 @@ type SlackSendOpts = {
   onPlatformSendDispatch?: () => Promise<void>;
   /** Persist each concrete platform send before any later chunk can fail. */
   onDeliveryResult?: (result: SlackSendResult) => Promise<void> | void;
+  /** Record the exact posted Block Kit controls before fallback fanout changes the aggregate. */
+  onQuestionControlDelivery?: (delivery: {
+    channelId: string;
+    messageId: string;
+    text: string;
+    blocks: (Block | KnownBlock)[];
+  }) => void;
 };
 
 type SlackWebApiErrorData = {
@@ -275,8 +282,8 @@ export async function updateMessageSlack(params: {
   const account = resolveSlackAccount({ cfg, accountId: params.accountId });
   const token = resolveToken({
     accountId: account.accountId,
-    fallbackToken: account.botToken,
-    fallbackSource: account.botTokenSource,
+    fallbackToken: resolveSlackOperationToken(account, "write"),
+    fallbackSource: account.identity === "user" ? account.userTokenSource : account.botTokenSource,
   });
   const client = getSlackWriteClient(token);
   await client.chat.update({
@@ -1115,6 +1122,27 @@ async function sendMessageSlackQueuedInner(params: {
     await opts.onDeliveryResult?.(result);
     return result;
   };
+  const reportQuestionControlDelivery = (
+    result: SlackSendResult,
+    deliveredBlocks: (Block | KnownBlock)[],
+    text: string,
+  ) => {
+    if (
+      !opts.onQuestionControlDelivery ||
+      !result.channelId ||
+      !result.messageId ||
+      result.messageId === "unknown" ||
+      !deliveredBlocks.some((block) => block.type === "actions")
+    ) {
+      return;
+    }
+    opts.onQuestionControlDelivery({
+      channelId: result.channelId,
+      messageId: result.messageId,
+      text,
+      blocks: deliveredBlocks,
+    });
+  };
   let didDispatch = false;
   const dispatchOnce = async () => {
     if (didDispatch) {
@@ -1222,7 +1250,7 @@ async function sendMessageSlackQueuedInner(params: {
         deliveredChannelId = resolvePostedMessageChannelId(response, channelId);
         const deliveredThreadTs =
           resolvePostedMessageThreadTs(response) ?? normalizeSlackThreadTsCandidate(opts.threadTs);
-        return await reportDelivery({
+        const result = await reportDelivery({
           messageId,
           channelId: deliveredChannelId,
           threadTs: deliveredThreadTs,
@@ -1233,6 +1261,8 @@ async function sendMessageSlackQueuedInner(params: {
             threadTs: deliveredThreadTs,
           }),
         });
+        reportQuestionControlDelivery(result, blocks, accessibilityText);
+        return result;
       } catch (error) {
         if (!hasNativeData || !isSlackInvalidBlocksError(error)) {
           throw error;
@@ -1284,7 +1314,7 @@ async function sendMessageSlackQueuedInner(params: {
         sentMessageIds.push(response.ts);
         const deliveredThreadTs =
           resolvePostedMessageThreadTs(response) ?? normalizeSlackThreadTsCandidate(opts.threadTs);
-        await reportDelivery({
+        const result = await reportDelivery({
           messageId: response.ts,
           channelId: deliveredChannelId,
           threadTs: deliveredThreadTs,
@@ -1295,6 +1325,9 @@ async function sendMessageSlackQueuedInner(params: {
             threadTs: deliveredThreadTs,
           }),
         });
+        if (fallback.blocks) {
+          reportQuestionControlDelivery(result, fallback.blocks, fallback.text);
+        }
       }
       const messageId = lastMessageId || "unknown";
       const deliveredThreadTs =
