@@ -39,6 +39,7 @@ import {
   resolveAssistantLiveChatInput,
   resolveMergedAssistantText,
   shouldSuppressAssistantEventForLiveChat,
+  type LiveAssistantMedia,
 } from "./live-chat-projector.js";
 import type { GatewayBroadcastFn, GatewayBroadcastToConnIdsFn } from "./server-broadcast-types.js";
 import { isChatAbortMarkerCurrent } from "./server-chat-state.js";
@@ -278,15 +279,15 @@ function excludeConnIds(
 
 type BroadcastDelta = { deltaText: string; replace?: true };
 
-type LiveAssistantContentBlock = { type: "text"; text: string } | { type: "image"; url: string };
+type LiveAssistantContentBlock = { type: "text"; text: string } | LiveAssistantMedia;
 
-function buildLiveAssistantContent(text: string, mediaUrls: readonly string[]) {
+function buildLiveAssistantContent(text: string, media: readonly LiveAssistantMedia[]) {
   const content: LiveAssistantContentBlock[] = [];
   if (text) {
     content.push({ type: "text", text });
   }
-  for (const url of mediaUrls) {
-    content.push({ type: "image", url });
+  for (const entry of media) {
+    content.push(entry);
   }
   return content;
 }
@@ -904,7 +905,7 @@ export function createAgentEventHandler({
     seq: number,
     text: string,
     delta?: unknown,
-    mediaUrls: readonly string[] = [],
+    media: readonly LiveAssistantMedia[] = [],
     opts?: { controlUiVisible?: boolean },
   ) => {
     const run = chatRunState.getOrCreate(clientRunId);
@@ -914,7 +915,7 @@ export function createAgentEventHandler({
       nextText: text,
       nextDelta: typeof delta === "string" ? delta : "",
     });
-    if (!mergedRawText && mediaUrls.length === 0) {
+    if (!mergedRawText && media.length === 0) {
       return;
     }
     const now = Date.now();
@@ -935,20 +936,21 @@ export function createAgentEventHandler({
     if (shouldHideHeartbeatChatOutput(clientRunId, sourceRunId)) {
       return;
     }
-    const previousMediaCount = run.mediaUrls?.length ?? 0;
-    if (mediaUrls.length > 0) {
-      const mergedMediaUrls = run.mediaUrls ?? [];
-      const seenMediaUrls = new Set(mergedMediaUrls);
-      for (const mediaUrl of mediaUrls) {
-        if (!seenMediaUrls.has(mediaUrl)) {
-          seenMediaUrls.add(mediaUrl);
-          mergedMediaUrls.push(mediaUrl);
+    const previousMediaCount = run.media?.length ?? 0;
+    if (media.length > 0) {
+      const mergedMedia = run.media ?? [];
+      const seenMedia = new Set(mergedMedia.map((entry) => `${entry.type}\u0000${entry.url}`));
+      for (const entry of media) {
+        const key = `${entry.type}\u0000${entry.url}`;
+        if (!seenMedia.has(key)) {
+          seenMedia.add(key);
+          mergedMedia.push(entry);
         }
       }
-      run.mediaUrls = mergedMediaUrls;
+      run.media = mergedMedia;
     }
-    const retainedMediaUrls = run.mediaUrls ?? [];
-    const hasFreshMedia = retainedMediaUrls.length > previousMediaCount;
+    const retainedMedia = run.media ?? [];
+    const hasFreshMedia = retainedMedia.length > previousMediaCount;
     const last = run.deltaSentAt ?? 0;
     if (!hasFreshMedia && now - last < 150) {
       return;
@@ -975,7 +977,7 @@ export function createAgentEventHandler({
       ...(broadcastDelta?.replace ? { replace: true as const } : {}),
       message: {
         role: "assistant",
-        content: buildLiveAssistantContent(mergedText, retainedMediaUrls),
+        content: buildLiveAssistantContent(mergedText, retainedMedia),
         timestamp: now,
       },
     };
@@ -985,7 +987,7 @@ export function createAgentEventHandler({
       controlUiVisible: opts?.controlUiVisible ?? true,
       dropIfSlow: true,
     });
-    run.deltaLastBroadcastMediaCount = retainedMediaUrls.length;
+    run.deltaLastBroadcastMediaCount = retainedMedia.length;
   };
 
   const resolveBufferedChatTextState = (
@@ -1029,13 +1031,13 @@ export function createAgentEventHandler({
 
     const now = Date.now();
     const run = chatRunState.getOrCreate(clientRunId);
-    const mediaUrls = run.mediaUrls ?? [];
+    const media = run.media ?? [];
     const visibleText = shouldSuppressSilent ? "" : text;
     const delta = resolveBroadcastDelta({
       text: visibleText,
       previousBroadcastText: run.deltaLastBroadcastText,
     });
-    const hasUnflushedMedia = mediaUrls.length !== (run.deltaLastBroadcastMediaCount ?? 0);
+    const hasUnflushedMedia = media.length !== (run.deltaLastBroadcastMediaCount ?? 0);
     if (!delta && !hasUnflushedMedia) {
       return;
     }
@@ -1051,7 +1053,7 @@ export function createAgentEventHandler({
       ...(delta?.replace ? { replace: true as const } : {}),
       message: {
         role: "assistant",
-        content: buildLiveAssistantContent(visibleText, mediaUrls),
+        content: buildLiveAssistantContent(visibleText, media),
         timestamp: now,
       },
     };
@@ -1065,7 +1067,7 @@ export function createAgentEventHandler({
     });
     run.deltaLastBroadcastLen = visibleText.length;
     run.deltaLastBroadcastText = visibleText;
-    run.deltaLastBroadcastMediaCount = mediaUrls.length;
+    run.deltaLastBroadcastMediaCount = media.length;
     run.deltaSentAt = now;
   };
 
@@ -1112,7 +1114,7 @@ export function createAgentEventHandler({
     const { text, shouldSuppressSilent } = resolveBufferedChatTextState(clientRunId, sourceRunId, {
       suppressLeadFragments: false,
     });
-    const mediaUrls = chatRunState.runs.get(clientRunId)?.mediaUrls ?? [];
+    const media = chatRunState.runs.get(clientRunId)?.media ?? [];
     // Flush any throttled delta so streaming clients receive the complete text
     // before the final event. The 150 ms throttle in emitChatDelta may have
     // suppressed the most recent chunk, leaving the client with stale text.
@@ -1134,10 +1136,10 @@ export function createAgentEventHandler({
         ...(stopReason && { stopReason }),
         ...(jobState === "done" && opts?.yielded ? { yielded: true as const } : {}),
         message:
-          (text && !shouldSuppressSilent) || mediaUrls.length > 0
+          (text && !shouldSuppressSilent) || media.length > 0
             ? {
                 role: "assistant",
-                content: buildLiveAssistantContent(shouldSuppressSilent ? "" : text, mediaUrls),
+                content: buildLiveAssistantContent(shouldSuppressSilent ? "" : text, media),
                 timestamp: Date.now(),
               }
             : undefined,
@@ -1664,7 +1666,7 @@ export function createAgentEventHandler({
           evt.seq,
           assistantLiveChatInput.text,
           assistantLiveChatInput.delta,
-          assistantLiveChatInput.mediaUrls,
+          assistantLiveChatInput.media,
           {
             controlUiVisible: isControlUiVisible,
           },

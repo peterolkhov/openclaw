@@ -17,10 +17,15 @@ import {
 
 const MAX_LIVE_CHAT_BUFFER_CHARS = 500_000;
 
+export type LiveAssistantMedia = {
+  type: "image" | "audio" | "video" | "file";
+  url: string;
+};
+
 /** Normalizes assistant event payloads that contain text, media, or both. */
 export function resolveAssistantLiveChatInput(
   data: unknown,
-): { text: string; delta: string; mediaUrls: string[] } | undefined {
+): { text: string; delta: string; media: LiveAssistantMedia[] } | undefined {
   if (!data || typeof data !== "object") {
     return undefined;
   }
@@ -29,9 +34,17 @@ export function resolveAssistantLiveChatInput(
     delta?: unknown;
     mediaUrl?: unknown;
     mediaUrls?: unknown;
+    mediaType?: unknown;
   };
-  const mediaUrls: string[] = [];
+  const media: LiveAssistantMedia[] = [];
   const seenMediaUrls = new Set<string>();
+  const mediaType =
+    record.mediaType === "audio" ||
+    record.mediaType === "video" ||
+    record.mediaType === "file" ||
+    record.mediaType === "image"
+      ? record.mediaType
+      : "image";
   const appendMediaUrl = (value: unknown) => {
     if (typeof value !== "string") {
       return;
@@ -41,27 +54,23 @@ export function resolveAssistantLiveChatInput(
       return;
     }
     seenMediaUrls.add(trimmed);
-    mediaUrls.push(trimmed);
+    media.push({ type: mediaType, url: trimmed });
   };
   if (Array.isArray(record.mediaUrls)) {
     for (const mediaUrl of record.mediaUrls) {
       appendMediaUrl(mediaUrl);
     }
   }
-  if (mediaUrls.length === 0) {
+  if (media.length === 0) {
     appendMediaUrl(record.mediaUrl);
   }
-  if (
-    typeof record.text !== "string" &&
-    typeof record.delta !== "string" &&
-    mediaUrls.length === 0
-  ) {
+  if (typeof record.text !== "string" && typeof record.delta !== "string" && media.length === 0) {
     return undefined;
   }
   return {
     text: typeof record.text === "string" ? record.text : "",
     delta: typeof record.delta === "string" ? record.delta : "",
-    mediaUrls,
+    media,
   };
 }
 
