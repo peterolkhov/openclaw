@@ -297,16 +297,19 @@ describe("buildAssistantStreamData", () => {
         text: "hello",
         delta: "he",
         replace: true,
-        mediaUrl: "https://example.com/a.png",
-        mediaType: "audio",
+        mediaUrls: ["https://example.com/a.png", "https://example.com/voice.ogg"],
+        mediaFallbackType: "audio",
         phase: "final_answer",
       }),
     ).toEqual({
       text: "hello",
       delta: "he",
       replace: true,
-      mediaUrls: ["https://example.com/a.png"],
-      mediaType: "audio",
+      mediaUrls: ["https://example.com/a.png", "https://example.com/voice.ogg"],
+      media: [
+        { type: "image", url: "https://example.com/a.png" },
+        { type: "audio", url: "https://example.com/voice.ogg" },
+      ],
       phase: "final_answer",
     });
   });

@@ -2,6 +2,7 @@
  * Handles embedded-agent assistant message events, block replies, reasoning
  * streams, reply directives, and pending tool media attachment handoff.
  */
+import { kindFromMime, mimeTypeFromFilePath } from "@openclaw/media-core/mime";
 import { asOptionalRecord as asRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
@@ -763,7 +764,7 @@ function buildAssistantStreamData(params: {
   replace?: boolean;
   mediaUrls?: string[];
   mediaUrl?: string;
-  mediaType?: "image" | "audio" | "video" | "file";
+  mediaFallbackType?: "image" | "audio" | "video" | "file";
   phase?: AssistantPhase;
   itemId?: string;
 }): {
@@ -771,20 +772,41 @@ function buildAssistantStreamData(params: {
   delta: string;
   replace?: true;
   mediaUrls?: string[];
-  mediaType?: "image" | "audio" | "video" | "file";
+  media?: Array<{ type: "image" | "audio" | "video" | "file"; url: string }>;
   phase?: AssistantPhase;
   itemId?: string;
 } {
   const mediaUrls = resolveSendableOutboundReplyParts(params).mediaUrls;
+  const media = mediaUrls.map((url) => ({
+    type: resolveAssistantStreamMediaType(url, params.mediaFallbackType),
+    url,
+  }));
   return {
     text: params.text ?? "",
     delta: params.delta ?? "",
     replace: params.replace ? true : undefined,
     mediaUrls: mediaUrls.length ? mediaUrls : undefined,
-    mediaType: mediaUrls.length ? params.mediaType : undefined,
+    media: media.length ? media : undefined,
     phase: params.phase,
     itemId: params.itemId,
   };
+}
+
+function resolveAssistantStreamMediaType(
+  url: string,
+  fallbackType: "image" | "audio" | "video" | "file" | undefined,
+): "image" | "audio" | "video" | "file" {
+  const inferredType = kindFromMime(mimeTypeFromFilePath(url));
+  switch (inferredType) {
+    case "image":
+    case "audio":
+    case "video":
+      return inferredType;
+    case "document":
+      return "file";
+    default:
+      return fallbackType ?? "image";
+  }
 }
 
 /** Handles assistant message-start boundaries for streaming state. */
@@ -1204,7 +1226,7 @@ export function handleMessageUpdate(
         delta: releaseHeldSnapshot ? currentSourcePartial.text : deltaText,
         replace: releaseHeldSnapshot || replace,
         mediaUrls,
-        mediaType: hasAudio ? "audio" : undefined,
+        mediaFallbackType: hasAudio ? "audio" : undefined,
         phase: deliveryPhase ?? assistantPhase,
       });
       ctx.emitAssistantStreamData(data, { emitPartialReply: !currentSourcePartial.hold });
@@ -1417,7 +1439,7 @@ export function handleMessageEnd(
       delta: finalStreamDelta,
       replace: shouldReplaceFinalStream,
       mediaUrls,
-      mediaType: hasAudio ? "audio" : undefined,
+      mediaFallbackType: hasAudio ? "audio" : undefined,
       phase: assistantPhase,
     });
     ctx.emitAssistantStreamData(data);

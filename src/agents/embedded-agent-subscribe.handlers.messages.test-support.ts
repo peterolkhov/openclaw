@@ -9,7 +9,7 @@ type AssistantStreamDataParams = {
   replace?: boolean;
   mediaUrls?: string[];
   mediaUrl?: string;
-  mediaType?: "image" | "audio" | "video" | "file";
+  mediaFallbackType?: "image" | "audio" | "video" | "file";
   phase?: AssistantPhase;
   itemId?: string;
 };
@@ -19,7 +19,7 @@ type AssistantStreamData = {
   delta: string;
   replace?: true;
   mediaUrls?: string[];
-  mediaType?: "image" | "audio" | "video" | "file";
+  media?: Array<{ type: "image" | "audio" | "video" | "file"; url: string }>;
   phase?: AssistantPhase;
   itemId?: string;
 };

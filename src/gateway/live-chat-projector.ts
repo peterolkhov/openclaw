@@ -34,29 +34,39 @@ export function resolveAssistantLiveChatInput(
     delta?: unknown;
     mediaUrl?: unknown;
     mediaUrls?: unknown;
-    mediaType?: unknown;
+    media?: unknown;
   };
   const media: LiveAssistantMedia[] = [];
-  const seenMediaUrls = new Set<string>();
-  const mediaType =
-    record.mediaType === "audio" ||
-    record.mediaType === "video" ||
-    record.mediaType === "file" ||
-    record.mediaType === "image"
-      ? record.mediaType
-      : "image";
-  const appendMediaUrl = (value: unknown) => {
+  const seenMedia = new Set<string>();
+  const appendMediaUrl = (value: unknown, type: LiveAssistantMedia["type"] = "image") => {
     if (typeof value !== "string") {
       return;
     }
     const trimmed = value.trim();
-    if (!trimmed || seenMediaUrls.has(trimmed)) {
+    const key = `${type}\u0000${trimmed}`;
+    if (!trimmed || seenMedia.has(key)) {
       return;
     }
-    seenMediaUrls.add(trimmed);
-    media.push({ type: mediaType, url: trimmed });
+    seenMedia.add(key);
+    media.push({ type, url: trimmed });
   };
-  if (Array.isArray(record.mediaUrls)) {
+  if (Array.isArray(record.media)) {
+    for (const entry of record.media) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const typed = entry as { type?: unknown; url?: unknown };
+      const type =
+        typed.type === "audio" ||
+        typed.type === "video" ||
+        typed.type === "file" ||
+        typed.type === "image"
+          ? typed.type
+          : "image";
+      appendMediaUrl(typed.url, type);
+    }
+  }
+  if (media.length === 0 && Array.isArray(record.mediaUrls)) {
     for (const mediaUrl of record.mediaUrls) {
       appendMediaUrl(mediaUrl);
     }

@@ -633,13 +633,15 @@ describe("agent event handler", () => {
     nowSpy.mockRestore();
   });
 
-  it("preserves explicit assistant audio media types in live chat events", () => {
+  it("preserves mixed assistant media types in live chat events", () => {
     const { broadcast, chatRunState, handler } = createHarness({ now: 1_000 });
     registerNamedChatRun(chatRunState, "audio-media");
 
     emitAgentEvent(handler, "run-audio-media", "assistant", {
-      mediaUrls: ["https://example.test/voice.ogg"],
-      mediaType: "audio",
+      media: [
+        { type: "image", url: "https://example.test/image.png" },
+        { type: "audio", url: "https://example.test/voice.ogg" },
+      ],
     });
     emitLifecycleEnd(handler, "run-audio-media");
 
@@ -647,11 +649,21 @@ describe("agent event handler", () => {
     expect(chatCalls).toHaveLength(2);
     expect(chatCalls[0]?.[1]).toMatchObject({
       state: "delta",
-      message: { content: [{ type: "audio", url: "https://example.test/voice.ogg" }] },
+      message: {
+        content: [
+          { type: "image", url: "https://example.test/image.png" },
+          { type: "audio", url: "https://example.test/voice.ogg" },
+        ],
+      },
     });
     expect(chatCalls[1]?.[1]).toMatchObject({
       state: "final",
-      message: { content: [{ type: "audio", url: "https://example.test/voice.ogg" }] },
+      message: {
+        content: [
+          { type: "image", url: "https://example.test/image.png" },
+          { type: "audio", url: "https://example.test/voice.ogg" },
+        ],
+      },
     });
   });
 
