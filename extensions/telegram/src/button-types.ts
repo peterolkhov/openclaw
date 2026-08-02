@@ -47,7 +47,7 @@ function toTelegramButtonStyle(
 
 function toTelegramInlineButton(
   button: MessagePresentationButton,
-  optionIndex: number,
+  questionOptionIndices: Map<string, Map<string, number>>,
   options?: { allowWebAppButtons?: boolean },
 ): TelegramInlineButton | undefined {
   const style = toTelegramButtonStyle(button.style);
@@ -68,11 +68,20 @@ function toTelegramInlineButton(
     return callbackData ? { text: button.label, callback_data: callbackData, style } : undefined;
   }
   if (action.type === "question") {
+    const optionIndices = questionOptionIndices.get(action.questionId) ?? new Map<string, number>();
+    const normalizedOptionValue = action.optionValue.trim().toLowerCase();
+    const optionIndex = optionIndices.get(normalizedOptionValue) ?? optionIndices.size;
     const callbackData = buildTelegramQuestionCallbackData({
       questionId: action.questionId,
       optionIndex,
     });
-    return callbackData ? { text: button.label, callback_data: callbackData, style } : undefined;
+    if (!callbackData) {
+      return undefined;
+    }
+    // Gateway labels are unique after trim/lowercase; repeated rendered values share one index.
+    optionIndices.set(normalizedOptionValue, optionIndex);
+    questionOptionIndices.set(action.questionId, optionIndices);
+    return { text: button.label, callback_data: callbackData, style };
   }
   if (action.type === "command") {
     const command = rewriteTelegramApprovalDecisionAlias(action.command.trim());
@@ -102,13 +111,14 @@ function toTelegramInlineButton(
 function chunkInteractiveButtons(
   buttons: readonly MessagePresentationButton[],
   rows: TelegramInlineButton[][],
+  questionOptionIndices: Map<string, Map<string, number>>,
   options?: { allowWebAppButtons?: boolean },
 ) {
-  // Index is position in the question's options; core emits one buttons block in option order.
+  // Question value identity must survive row/block splits and repeated rendered controls.
   for (let i = 0; i < buttons.length; i += TELEGRAM_INTERACTIVE_ROW_SIZE) {
     const row = buttons
       .slice(i, i + TELEGRAM_INTERACTIVE_ROW_SIZE)
-      .map((button, offset) => toTelegramInlineButton(button, i + offset, options))
+      .map((button) => toTelegramInlineButton(button, questionOptionIndices, options))
       .filter((button): button is TelegramInlineButton => Boolean(button));
     if (row.length > 0) {
       rows.push(row);
@@ -123,12 +133,13 @@ function buildTelegramInteractiveButtons(
   interactive?: LegacyInteractiveReply,
   options?: { allowWebAppButtons?: boolean },
 ): TelegramInlineButtons | undefined {
+  const questionOptionIndices = new Map<string, Map<string, number>>();
   const rows = reduceLegacyInteractiveReply(
     interactive,
     [] as TelegramInlineButton[][],
     (state, block) => {
       if (block.type === "buttons") {
-        chunkInteractiveButtons(block.buttons, state, options);
+        chunkInteractiveButtons(block.buttons, state, questionOptionIndices, options);
         return state;
       }
       if (block.type === "select") {
@@ -139,6 +150,7 @@ function buildTelegramInteractiveButtons(
             value: option.value,
           })),
           state,
+          questionOptionIndices,
         );
       }
       return state;
@@ -153,12 +165,13 @@ export function buildTelegramPresentationButtons(
   options?: { allowWebAppButtons?: boolean },
 ): TelegramInlineButtons | undefined {
   const rows: TelegramInlineButton[][] = [];
+  const questionOptionIndices = new Map<string, Map<string, number>>();
   for (const block of presentation?.blocks ?? []) {
     if (!isMessagePresentationInteractiveBlock(block)) {
       continue;
     }
     if (block.type === "buttons") {
-      chunkInteractiveButtons(block.buttons, rows, options);
+      chunkInteractiveButtons(block.buttons, rows, questionOptionIndices, options);
       continue;
     }
     chunkInteractiveButtons(
@@ -168,6 +181,7 @@ export function buildTelegramPresentationButtons(
         value: option.value,
       })),
       rows,
+      questionOptionIndices,
     );
   }
   return rows.length > 0 ? rows : undefined;

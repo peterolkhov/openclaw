@@ -76,6 +76,124 @@ describe("buildTelegramPresentationButtons", () => {
     ]);
   });
 
+  it("keeps question option indices independent and stable across presentation blocks", () => {
+    const firstQuestionId = "ask_0123456789abcdef0123456789abcdef";
+    const secondQuestionId = "ask_fedcba9876543210fedcba9876543210";
+    const questionButton = (questionId: string, optionValue: string) => ({
+      label: optionValue,
+      action: { type: "question" as const, questionId, optionValue },
+    });
+
+    const rows = buildTelegramPresentationButtons({
+      blocks: [
+        {
+          type: "buttons",
+          buttons: [
+            questionButton(firstQuestionId, "東京"),
+            questionButton(firstQuestionId, "Déployer"),
+          ],
+        },
+        {
+          type: "buttons",
+          buttons: [
+            questionButton(secondQuestionId, "東京"),
+            questionButton(secondQuestionId, "Production"),
+          ],
+        },
+        {
+          type: "buttons",
+          buttons: [
+            questionButton(firstQuestionId, "東京"),
+            questionButton(firstQuestionId, "Production 🚀"),
+          ],
+        },
+      ],
+    });
+
+    expect(rows?.map((row) => row.map((button) => button.callback_data))).toEqual([
+      [`tgq1:${firstQuestionId}:0`, `tgq1:${firstQuestionId}:1`],
+      [`tgq1:${secondQuestionId}:0`, `tgq1:${secondQuestionId}:1`],
+      [`tgq1:${firstQuestionId}:0`, `tgq1:${firstQuestionId}:2`],
+    ]);
+  });
+
+  it("maps repeated rendered question values to their canonical Gateway option indices", () => {
+    const questionId = "ask_0123456789abcdef0123456789abcdef";
+    const button = (label: string) => ({
+      label,
+      action: { type: "question" as const, questionId, optionValue: label },
+    });
+
+    const rows = buildTelegramPresentationButtons({
+      blocks: [
+        { type: "buttons", buttons: [button("A"), button("A")] },
+        { type: "buttons", buttons: [button("B"), button("C")] },
+      ],
+    });
+
+    expect(rows?.flatMap((row) => row.map((entry) => entry.callback_data))).toEqual([
+      `tgq1:${questionId}:0`,
+      `tgq1:${questionId}:0`,
+      `tgq1:${questionId}:1`,
+      `tgq1:${questionId}:2`,
+    ]);
+  });
+
+  it("normalizes repeated question values with the Gateway trim and lowercase contract", () => {
+    const questionId = "ask_0123456789abcdef0123456789abcdef";
+    const questionButton = (optionValue: string) => ({
+      label: optionValue,
+      action: { type: "question" as const, questionId, optionValue },
+    });
+
+    const rows = buildTelegramPresentationButtons({
+      blocks: [
+        { type: "buttons", buttons: [questionButton(" Deploy "), questionButton("deploy")] },
+        { type: "buttons", buttons: [questionButton("Production")] },
+      ],
+    });
+
+    expect(rows?.flatMap((row) => row.map((entry) => entry.callback_data))).toEqual([
+      `tgq1:${questionId}:0`,
+      `tgq1:${questionId}:0`,
+      `tgq1:${questionId}:1`,
+    ]);
+  });
+
+  it("does not consume a question option position when callback encoding fails", () => {
+    const validQuestionId = "ask_0123456789abcdef0123456789abcdef";
+    const invalidQuestionId = "not-a-gateway-question";
+    const rows = buildTelegramPresentationButtons({
+      blocks: [
+        {
+          type: "buttons",
+          buttons: [
+            {
+              label: "Invalid",
+              action: {
+                type: "question" as const,
+                questionId: invalidQuestionId,
+                optionValue: "Invalid",
+              },
+            },
+            {
+              label: "Valid",
+              action: {
+                type: "question" as const,
+                questionId: validQuestionId,
+                optionValue: "Valid",
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(rows).toEqual([
+      [{ text: "Valid", callback_data: `tgq1:${validQuestionId}:0`, style: undefined }],
+    ]);
+  });
+
   it("drops presentation buttons whose callback payload exceeds Telegram limits", () => {
     expect(
       buildTelegramPresentationButtons({
