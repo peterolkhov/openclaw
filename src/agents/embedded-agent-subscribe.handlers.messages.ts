@@ -777,8 +777,11 @@ function buildAssistantStreamData(params: {
   itemId?: string;
 } {
   const mediaUrls = resolveSendableOutboundReplyParts(params).mediaUrls;
+  // Voice mode applies to the reply, not a particular URL. Only a singleton
+  // URL can safely use it as a fallback; mixed media keeps per-URL MIME kinds.
+  const mediaFallbackType = mediaUrls.length === 1 ? params.mediaFallbackType : undefined;
   const media = mediaUrls.map((url) => ({
-    type: resolveAssistantStreamMediaType(url, params.mediaFallbackType),
+    type: resolveAssistantStreamMediaType(url, mediaFallbackType),
     url,
   }));
   return {
