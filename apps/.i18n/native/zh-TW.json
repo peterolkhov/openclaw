@@ -23479,14 +23479,14 @@
       "translated": "此裝置需要配對核准"
     },
     {
-      "id": "native.apple.b52cb4aae7ca6573",
-      "source": "Paste the token configured on the gateway host. On the gateway host, run `openclaw config get gateway.auth.token`. If the gateway uses an environment variable instead, use `OPENCLAW_GATEWAY_TOKEN`.",
-      "translated": "Paste the token configured on the gateway host. On the gateway host, run `openclaw config get gateway.auth.token`. If the gateway uses an environment variable instead, use `OPENCLAW_GATEWAY_TOKEN`."
+      "id": "native.apple.90b00f3f5418b439",
+      "source": "Paste the token configured on the gateway host. On the gateway host, run `openclaw gateway auth-token --show` in an interactive terminal, then paste its output.",
+      "translated": "貼上在 gateway 主機上設定的權杖。在 gateway 主機上，於互動式終端機執行 `openclaw gateway auth-token --show`，然後貼上其輸出結果。"
     },
     {
-      "id": "native.apple.bbb87d21ce8a291e",
-      "source": "Check `gateway.auth.token` or `OPENCLAW_GATEWAY_TOKEN` on the gateway host and try again.",
-      "translated": "檢查 Gateway 主機上的 `gateway.auth.token` 或 `OPENCLAW_GATEWAY_TOKEN`，然後再試一次。"
+      "id": "native.apple.b79d3c42bd5438d5",
+      "source": "On the gateway host, run `openclaw gateway auth-token --show` in an interactive terminal, then replace the token and try again.",
+      "translated": "在 gateway 主機上，於互動式終端機執行 `openclaw gateway auth-token --show`，然後更換權杖並重試。"
     },
     {
       "id": "native.apple.c26f61d639591f81",
@@ -23509,14 +23509,14 @@
       "translated": "Approve this device from an already-paired OpenClaw client. In your OpenClaw chat, run `/pair approve`, then click **Check connection** again."
     },
     {
-      "id": "native.apple.e73170e4ab1dbe8f",
-      "source": "This gateway requires an auth token from the gateway host.",
-      "translated": "此 Gateway 需要來自 Gateway 主機的驗證權杖。"
+      "id": "native.apple.a1cb5542806f0ec9",
+      "source": "This gateway requires an auth token. Run openclaw gateway auth-token --show on the gateway host.",
+      "translated": "此 gateway 需要驗證權杖。請在 gateway 主機上執行 openclaw gateway auth-token --show。"
     },
     {
-      "id": "native.apple.e3f983b8c517da29",
-      "source": "Gateway token mismatch. Check gateway.auth.token or OPENCLAW_GATEWAY_TOKEN on the gateway host.",
-      "translated": "Gateway 權杖不相符。請檢查 Gateway 主機上的 gateway.auth.token 或 OPENCLAW_GATEWAY_TOKEN。"
+      "id": "native.apple.e12c96574b97ed4a",
+      "source": "Gateway token mismatch. Run openclaw gateway auth-token --show on the gateway host.",
+      "translated": "Gateway 權杖不符。請在 gateway 主機上執行 openclaw gateway auth-token --show。"
     },
     {
       "id": "native.apple.cd96754a96e5aa35",
